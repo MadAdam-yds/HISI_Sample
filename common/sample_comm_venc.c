@@ -2157,7 +2157,7 @@ HI_VOID* SAMPLE_COMM_VENC_GetVencStreamProc(HI_VOID* p)
                     }
 
 #ifndef __HuaweiLite__
-                    s32Ret = SAMPLE_COMM_VENC_SaveStream(pFile[i], &stStream);
+                    //s32Ret = SAMPLE_COMM_VENC_SaveStream(pFile[i], &stStream);
 #else
                     s32Ret = SAMPLE_COMM_VENC_SaveStream_PhyAddr(pFile[i], &stStreamBufInfo[i], &stStream);
 #endif

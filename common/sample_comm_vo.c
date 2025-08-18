@@ -872,14 +872,15 @@ HI_S32 SAMPLE_COMM_VO_GetDefConfig(SAMPLE_VO_CONFIG_S *pstVoConfig)
         pstVoConfig->enVoIntfType = VO_INTF_HDMI;
     }
     pstVoConfig->enIntfSync        = VO_OUTPUT_1080P60;
-    pstVoConfig->u32BgColor        = COLOR_RGB_BLUE;
+    pstVoConfig->u32BgColor        = COLOR_RGB_GREEN;
     pstVoConfig->enPixFormat       = PIXEL_FORMAT_YVU_SEMIPLANAR_420;
     pstVoConfig->stDispRect        = stDefDispRect;
     pstVoConfig->stImageSize       = stDefImageSize;
     pstVoConfig->enVoPartMode      = VO_PART_MODE_SINGLE;
-    pstVoConfig->u32DisBufLen      = 3;
+    pstVoConfig->u32DisBufLen      = 4;
     pstVoConfig->enDstDynamicRange = DYNAMIC_RANGE_SDR8;
-    pstVoConfig->enVoMode          = VO_MODE_1MUX;
+    //pstVoConfig->enVoMode          = VO_MODE_1MUX;
+    pstVoConfig->enVoMode          = VO_MODE_4MUX;//for test
 
     return HI_SUCCESS;
 }
@@ -975,7 +976,7 @@ HI_S32 SAMPLE_COMM_VO_StartVO(SAMPLE_VO_CONFIG_S *pstVoConfig)
 
     if (pstVoConfig->u32DisBufLen)
     {
-        s32Ret = HI_MPI_VO_SetDisplayBufLen(VoLayer, pstVoConfig->u32DisBufLen);
+        s32Ret = HI_MPI_VO_SetDisplayBufLen(VoLayer, pstVoConfig->u32DisBufLen);//vo非直通模式下,必须设置该buf,否则VO无法正常工作.
         if (HI_SUCCESS != s32Ret)
         {
             SAMPLE_PRT("HI_MPI_VO_SetDisplayBufLen failed with %#x!\n",s32Ret);

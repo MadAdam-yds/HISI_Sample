@@ -21,8 +21,36 @@ extern "C" {
 #include <signal.h>
 
 #include "sample_comm.h"
+/*****************************************************************************
+* function : set vpss chn.
+*****************************************************************************/
+HI_S32 SAMPLE_COMM_VPSS_SetExtChn(VPSS_GRP VpssGrp,VPSS_CHN VpssExtChn,VPSS_CHN_ATTR_S* pastVpssChnAttr ){
+    VPSS_EXT_CHN_ATTR_S extChnAttr = {0};
+    extChnAttr.s32BindChn = 1;//bind phy chn 1
+    extChnAttr.enCompressMode = pastVpssChnAttr->enCompressMode;
+    extChnAttr.enPixelFormat = pastVpssChnAttr->enPixelFormat;
+    extChnAttr.enVideoFormat = pastVpssChnAttr->enVideoFormat;
+    extChnAttr.u32Depth = pastVpssChnAttr->u32Depth;
+    extChnAttr.stFrameRate.s32SrcFrameRate = pastVpssChnAttr->stFrameRate.s32SrcFrameRate;
+    extChnAttr.stFrameRate.s32DstFrameRate = pastVpssChnAttr->stFrameRate.s32DstFrameRate;
+    extChnAttr.u32Height = pastVpssChnAttr->u32Height;
+    extChnAttr.u32Width = pastVpssChnAttr->u32Width;
+    extChnAttr.enDynamicRange = pastVpssChnAttr->enDynamicRange;
+    HI_S32 s32Ret = HI_MPI_VPSS_SetExtChnAttr(VpssGrp,VpssExtChn,&extChnAttr);
 
-
+    if (s32Ret != HI_SUCCESS)
+    {
+        SAMPLE_PRT("HI_MPI_VPSS_SetExtChnAttr(grp:%d) failed with %#x!\n", VpssGrp, s32Ret);
+        return HI_FAILURE;
+    }
+    s32Ret = HI_MPI_VPSS_EnableChn(VpssGrp, VpssExtChn);
+    if (s32Ret != HI_SUCCESS)
+    {
+        SAMPLE_PRT("HI_MPI_VPSS_EnableChn failed with %#x\n", s32Ret);
+        return HI_FAILURE;
+    }
+    return HI_SUCCESS;
+}
 /*****************************************************************************
 * function : start vpss grp.
 *****************************************************************************/
@@ -74,6 +102,17 @@ HI_S32 SAMPLE_COMM_VPSS_Start(VPSS_GRP VpssGrp, HI_BOOL* pabChnEnable, VPSS_GRP_
     return HI_SUCCESS;
 }
 
+HI_S32 SAMPLE_COMM_VPSS_ExtChn_Stop(VPSS_GRP VpssGrp,VPSS_CHN VpssExtChn){
+    HI_S32 s32Ret = HI_SUCCESS;
+    s32Ret = HI_MPI_VPSS_DisableChn(VpssGrp, VpssExtChn);
+    if (s32Ret != HI_SUCCESS)
+    {
+        SAMPLE_PRT("failed with %#x! VpssExtChn %u\n", s32Ret,VpssExtChn);
+        return HI_FAILURE;
+    }
+
+    return HI_TRUE;
+}
 /*****************************************************************************
 * function : stop vpss grp
 *****************************************************************************/
@@ -92,7 +131,7 @@ HI_S32 SAMPLE_COMM_VPSS_Stop(VPSS_GRP VpssGrp, HI_BOOL* pabChnEnable)
 
             if (s32Ret != HI_SUCCESS)
             {
-                SAMPLE_PRT("failed with %#x!\n", s32Ret);
+                SAMPLE_PRT("failed with %#x! VpssChn %u\n", s32Ret,VpssChn);
                 return HI_FAILURE;
             }
         }

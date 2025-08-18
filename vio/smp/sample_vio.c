@@ -66,12 +66,12 @@ HI_S32 SAMPLE_VIO_ViOnlineVpssOnlineRoute(HI_U32 u32VoIntfType)
     VIDEO_FORMAT_E     enVideoFormat  = VIDEO_FORMAT_LINEAR;
     COMPRESS_MODE_E    enCompressMode = COMPRESS_MODE_NONE;
     VI_VPSS_MODE_E     enMastPipeMode = VI_ONLINE_VPSS_ONLINE;
-
     VPSS_GRP           VpssGrp        = 0;
     VPSS_GRP_ATTR_S    stVpssGrpAttr;
     VPSS_CHN           VpssChn        = VPSS_CHN0;
     HI_BOOL            abChnEnable[VPSS_MAX_PHY_CHN_NUM] = {0};
     VPSS_CHN_ATTR_S    astVpssChnAttr[VPSS_MAX_PHY_CHN_NUM];
+
 
     VENC_CHN           VencChn[1]  = {0};
     PAYLOAD_TYPE_E     enType      = PT_H265;
@@ -114,25 +114,52 @@ HI_S32 SAMPLE_VIO_ViOnlineVpssOnlineRoute(HI_U32 u32VoIntfType)
         SAMPLE_PRT("get picture size failed!\n");
         return s32Ret;
     }
-
     /*config vb*/
     memset_s(&stVbConf, sizeof(VB_CONFIG_S), 0, sizeof(VB_CONFIG_S));
-    stVbConf.u32MaxPoolCnt              = 2;
+    stVbConf.u32MaxPoolCnt              = 3;
 
     u32BlkSize = COMMON_GetPicBufferSize(stSize.u32Width, stSize.u32Height, SAMPLE_PIXEL_FORMAT, DATA_BITWIDTH_8, COMPRESS_MODE_SEG, DEFAULT_ALIGN);
-    stVbConf.astCommPool[0].u64BlkSize  = u32BlkSize;
+    stVbConf.astCommPool[0].u64BlkSize  = u32BlkSize;//实际Blk大小256Byte对齐
     stVbConf.astCommPool[0].u32BlkCnt   = 10;
-
+    
     u32BlkSize = VI_GetRawBufferSize(stSize.u32Width, stSize.u32Height, PIXEL_FORMAT_RGB_BAYER_16BPP, COMPRESS_MODE_NONE, DEFAULT_ALIGN);
-    stVbConf.astCommPool[1].u64BlkSize  = u32BlkSize;
+    stVbConf.astCommPool[1].u64BlkSize  = u32BlkSize;//实际Blk大小256Byte对齐
     stVbConf.astCommPool[1].u32BlkCnt   = 4;
-
+    SAMPLE_PRT("u32BlkSize0 %u u32BlkSize1 %u\n", u32BlkSize,stVbConf.astCommPool[0],u32BlkSize,stVbConf.astCommPool[1]);
+    
+    stVbConf.astCommPool[2].u64BlkSize  = 1920*1080*3/2;//
+    stVbConf.astCommPool[2].u32BlkCnt   = 16;
     s32Ret = SAMPLE_COMM_SYS_Init(&stVbConf);
     if (HI_SUCCESS != s32Ret)
     {
         SAMPLE_PRT("system init failed with %d!\n", s32Ret);
         return s32Ret;
     }
+     /* for test  private vb */
+    #if 0
+    VPSS_MOD_PARAM_S pstModParam;
+    memset_s(&pstModParam, sizeof(VPSS_MOD_PARAM_S), 0, sizeof(VPSS_MOD_PARAM_S));
+    pstModParam.bOneBufForLowDelay = HI_FALSE;
+    pstModParam.u32VpssSplitNodeNum = 2;
+    pstModParam.u32VpssVbSource = 2; //0：公共 VB 1：Reserve 2：UserVB
+    pstModParam.bNrQuickStart = HI_FALSE;
+    s32Ret = HI_MPI_VPSS_SetModParam(&pstModParam);
+    if (HI_SUCCESS != s32Ret)
+    {
+        SAMPLE_PRT("HI_MPI_VPSS_SetModParam failed with 0x%x!\n", s32Ret);
+        return s32Ret;
+    }
+    VB_POOL_CONFIG_S VbPoolCfg;
+    memset(&VbPoolCfg,0,sizeof(VB_POOL_CONFIG_S));
+    VbPoolCfg.u32BlkCnt = 10;
+    VbPoolCfg.u64BlkSize = 1920*1080*3/2;
+    VbPoolCfg.enRemapMode = VB_REMAP_MODE_NOCACHE;
+    VB_POOL vbPoolId = HI_MPI_VB_CreatePool(&VbPoolCfg);
+    if(vbPoolId==VB_INVALID_POOLID){
+        SAMPLE_PRT("HI_MPI_VB_CreatePool failed\n");
+        return s32Ret;
+    }
+    #endif
 
     /*start vi*/
     s32Ret = SAMPLE_COMM_VI_StartVi(&stViConfig);
@@ -167,16 +194,47 @@ HI_S32 SAMPLE_VIO_ViOnlineVpssOnlineRoute(HI_U32 u32VoIntfType)
     astVpssChnAttr[VpssChn].bMirror                     = HI_FALSE;
     astVpssChnAttr[VpssChn].bFlip                       = HI_FALSE;
     astVpssChnAttr[VpssChn].stAspectRatio.enMode        = ASPECT_RATIO_NONE;
-
+    int vochnNum = 4;//for test
     /*start vpss*/
     abChnEnable[0] = HI_TRUE;
+    //for test
+    abChnEnable[1] = HI_TRUE;//物理通道1用于扩展4个通道[3,4,5,6],将这个4个扩展vpss绑定到VO.
+    astVpssChnAttr[1] = astVpssChnAttr[0];
+    
     s32Ret = SAMPLE_COMM_VPSS_Start(VpssGrp, abChnEnable, &stVpssGrpAttr, astVpssChnAttr);
     if (HI_SUCCESS != s32Ret)
     {
         SAMPLE_PRT("start vpss group failed. s32Ret: 0x%x !\n", s32Ret);
         goto EXIT1;
     }
+    //for test
+    #if 1
+    for(int i=0;i<vochnNum;++i){
+        HI_S32 vpssExtChn = i+VPSS_MAX_PHY_CHN_NUM;
+        s32Ret = SAMPLE_COMM_VPSS_SetExtChn(VpssGrp,vpssExtChn,&(astVpssChnAttr[0]));
+        if (HI_SUCCESS != s32Ret)
+        {
+            SAMPLE_PRT("set  vpss ext chn failed. s32Ret: 0x%x !\n", s32Ret);
+            goto EXIT1;
+        }
+    }
+    #endif
+    /*for test private vb */
+    #if 0
+    for(int i=0;i<1;++i){
+         HI_S32 vpssExtChn = i+VPSS_MAX_PHY_CHN_NUM;
+         s32Ret = HI_MPI_VPSS_AttachVbPool(VpssGrp, i,vbPoolId);
+        if (HI_SUCCESS != s32Ret)
+        {
+            SAMPLE_PRT("HI_MPI_VPSS_AttachVbPool failed. s32Ret: 0x%x !\n", s32Ret);
+            goto EXIT1;
+        }
+    }
+    #endif
+    
+   
 
+#if 0  // for test
     /*config venc */
     stGopAttr.enGopMode  = VENC_GOPMODE_SMARTP;
     stGopAttr.stSmartP.s32BgQpDelta  = 7;
@@ -195,7 +253,7 @@ HI_S32 SAMPLE_VIO_ViOnlineVpssOnlineRoute(HI_U32 u32VoIntfType)
         SAMPLE_PRT("Venc bind Vpss failed. s32Ret: 0x%x !n", s32Ret);
         goto EXIT3;
     }
-
+#endif
     /*config vo*/
     SAMPLE_COMM_VO_GetDefConfig(&stVoConfig);
     stVoConfig.enDstDynamicRange = enDynamicRange;
@@ -219,33 +277,52 @@ HI_S32 SAMPLE_VIO_ViOnlineVpssOnlineRoute(HI_U32 u32VoIntfType)
     }
 
     /*vpss bind vo*/
-    s32Ret = SAMPLE_COMM_VPSS_Bind_VO(VpssGrp, VpssChn, stVoConfig.VoDev, VoChn);
-    if (HI_SUCCESS != s32Ret)
+    for(int i=0;i<vochnNum;++i)//for test
     {
-        SAMPLE_PRT("vo bind vpss failed. s32Ret: 0x%x !\n", s32Ret);
-        goto EXIT5;
+        VpssChn = i;
+        VoChn = i;
+        s32Ret = SAMPLE_COMM_VPSS_Bind_VO(VpssGrp, VpssChn+VPSS_MAX_PHY_CHN_NUM, stVoConfig.VoDev, VoChn);
+        if (HI_SUCCESS != s32Ret)
+        {
+            SAMPLE_PRT("vo bind vpss failed. s32Ret: 0x%x !\n", s32Ret);
+            goto EXIT5;
+        }
     }
-
+   
+#if 0 //for test
     s32Ret = SAMPLE_COMM_VENC_StartGetStream(VencChn, sizeof(VencChn)/sizeof(VENC_CHN));
     if (HI_SUCCESS != s32Ret)
     {
         SAMPLE_PRT("Get venc stream failed!\n");
         goto EXIT6;
     }
-
+#endif
     PAUSE();
-
+#if 0 //for test
     SAMPLE_COMM_VENC_StopGetStream();
-
+#endif
 EXIT6:
-    SAMPLE_COMM_VPSS_UnBind_VO(VpssGrp, VpssChn, stVoConfig.VoDev, VoChn);
+    for(int i=0;i<vochnNum;++i)//for test
+    {
+        SAMPLE_COMM_VPSS_UnBind_VO(VpssGrp, VpssChn+VPSS_MAX_PHY_CHN_NUM, stVoConfig.VoDev, VoChn);
+    }
+    
 EXIT5:
     SAMPLE_COMM_VO_StopVO(&stVoConfig);
 EXIT4:
     SAMPLE_COMM_VPSS_UnBind_VENC(VpssGrp, VpssChn, VencChn[0]);
 EXIT3:
+#if 0
     SAMPLE_COMM_VENC_Stop(VencChn[0]);
+#endif
 EXIT2:
+//for test stop ext vpss chn
+ for(int i=0;i<vochnNum;++i){
+        HI_S32 vpssExtChn = i+VPSS_MAX_PHY_CHN_NUM;
+        SAMPLE_COMM_VPSS_ExtChn_Stop(VpssGrp, vpssExtChn);
+ }
+    
+//
     SAMPLE_COMM_VPSS_Stop(VpssGrp, abChnEnable);
 EXIT1:
     SAMPLE_COMM_VI_StopVi(&stViConfig);
