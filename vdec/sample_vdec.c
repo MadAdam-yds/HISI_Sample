@@ -233,7 +233,6 @@ HI_S32 SAMPLE_H265_VDEC_VPSS_VO(HI_VOID)
     SAMPLE_COMM_VDEC_StartSendStream(u32VdecChnNum, &stVdecSend[0], &VdecThread[0]);
 
     SAMPLE_COMM_VDEC_CmdCtrl(u32VdecChnNum, &stVdecSend[0], &VdecThread[0]);
-
     SAMPLE_COMM_VDEC_StopSendStream(u32VdecChnNum, &stVdecSend[0], &VdecThread[0]);
 
 END7:
@@ -381,7 +380,7 @@ HI_S32 SAMPLE_H264_VDEC_VPSS_VO(HI_VOID)
     astVpssChnAttr[1].enPixelFormat               = PIXEL_FORMAT_YVU_SEMIPLANAR_420;
     astVpssChnAttr[1].stFrameRate.s32SrcFrameRate = -1;
     astVpssChnAttr[1].stFrameRate.s32DstFrameRate = -1;
-    astVpssChnAttr[1].u32Depth                    = 0;
+    astVpssChnAttr[1].u32Depth                    = 4;
     astVpssChnAttr[1].bMirror                     = HI_FALSE;
     astVpssChnAttr[1].bFlip                       = HI_FALSE;
     astVpssChnAttr[1].stAspectRatio.enMode        = ASPECT_RATIO_NONE;
@@ -406,7 +405,7 @@ HI_S32 SAMPLE_H264_VDEC_VPSS_VO(HI_VOID)
     stVoConfig.enIntfSync            = enIntfSync;
     stVoConfig.enPicSize             = enDispPicSize;
     stVoConfig.u32BgColor            = COLOR_RGB_BLUE;
-    stVoConfig.u32DisBufLen          = 3;
+    stVoConfig.u32DisBufLen          = 5; //use private pool
     stVoConfig.enDstDynamicRange     = DYNAMIC_RANGE_SDR8;
     stVoConfig.enVoMode              = VO_MODE_1MUX;
     stVoConfig.enPixFormat           = PIXEL_FORMAT_YVU_SEMIPLANAR_420;
@@ -471,7 +470,17 @@ HI_S32 SAMPLE_H264_VDEC_VPSS_VO(HI_VOID)
     }
     SAMPLE_COMM_VDEC_StartSendStream(u32VdecChnNum, &stVdecSend[0], &VdecThread[0]);
 
+       /*for test get frame from vdec*/
+     VDEC_THREAD_PARAM_S stVdecGet[VDEC_MAX_CHN_NUM];
+     memcpy(stVdecGet,stVdecSend,sizeof(stVdecSend));
+     pthread_t   GetFrameThread[2*VDEC_MAX_CHN_NUM];
+     YDS_VDEC_StartGetFrame(u32VdecChnNum,&stVdecGet[0],&GetFrameThread[0]);//从解码通道获取解码后的Frame
+
+
+
     SAMPLE_COMM_VDEC_CmdCtrl(u32VdecChnNum, &stVdecSend[0], &VdecThread[0]);
+
+    YDS_VDEC_StopGetStream(u32VdecChnNum,&stVdecGet[0],&GetFrameThread[0]);
 
     SAMPLE_COMM_VDEC_StopSendStream(u32VdecChnNum, &stVdecSend[0], &VdecThread[0]);
 

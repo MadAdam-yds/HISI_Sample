@@ -662,6 +662,11 @@ HI_VOID SAMPLE_COMM_VDEC_StartGetPic(HI_S32 s32ChnNum, VDEC_THREAD_PARAM_S *pstV
 HI_VOID SAMPLE_COMM_VDEC_StopGetPic(HI_S32 s32ChnNum, VDEC_THREAD_PARAM_S *pstVdecGet, pthread_t *pVdecThread);
 HI_S32 SAMPLE_COMM_VDEC_Start(HI_S32 s32ChnNum, SAMPLE_VDEC_ATTR *pastSampleVdec);
 HI_S32 SAMPLE_COMM_VDEC_Stop(HI_S32 s32ChnNum);
+HI_VOID YDS_VDEC_StartGetFrame(HI_S32 s32ChnNum,VDEC_THREAD_PARAM_S *pstVdecGet,pthread_t *pThreadId);//从解码通道获取解码后的Frame
+HI_VOID* YDS_VDEC_GetFrame(HI_VOID *pArgs);
+HI_VOID YDS_VDEC_StopGetStream(HI_S32 s32ChnNum,VDEC_THREAD_PARAM_S *pstVdecGet,pthread_t *pThreadId);
+
+
 #ifdef __cplusplus
 #if __cplusplus
 }

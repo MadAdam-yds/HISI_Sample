@@ -24,7 +24,7 @@ extern "C"{
 #include "sample_comm.h"
 
 
-VB_SOURCE_E  g_enVdecVBSource  = VB_SOURCE_MODULE;
+VB_SOURCE_E  g_enVdecVBSource  = VB_SOURCE_USER;
 
 VB_POOL g_ahPicVbPool[VB_MAX_POOLS] = {[0 ... (VB_MAX_POOLS-1)] = VB_INVALID_POOLID};
 VB_POOL g_ahTmvVbPool[VB_MAX_POOLS] = {[0 ... (VB_MAX_POOLS-1)] = VB_INVALID_POOLID};
@@ -817,9 +817,124 @@ HI_VOID SAMPLE_COMM_VDEC_StopSendStream(HI_S32 s32ChnNum, VDEC_THREAD_PARAM_S *p
         }
     }
 }
+HI_VOID YDS_VDEC_StopGetStream(HI_S32 s32ChnNum,VDEC_THREAD_PARAM_S *pstVdecGet,pthread_t *pThreadId){
+     HI_S32  i;
 
+    for(i=0; i<s32ChnNum; i++)
+    {
+        pstVdecGet[i].eThreadCtrl = THREAD_CTRL_STOP;
+        if(0 != pThreadId[i])
+        {
+            pthread_join(pThreadId[i], HI_NULL);
+            pThreadId[i] = 0;
+        }
+    }
+}
 
+HI_VOID YDS_VDEC_StartGetFrame(HI_S32 s32ChnNum,VDEC_THREAD_PARAM_S *pstVdecGet,pthread_t *pThreadId){
+     HI_S32  i;
+    for(i=0; i<s32ChnNum; i++)
+    {
+        pThreadId[i] = 0;
+        pthread_create(&pThreadId[i], 0, YDS_VDEC_GetFrame,(HI_VOID*)&pstVdecGet[i]);
+    }
+}
 
+HI_VOID * YDS_VDEC_GetFrame(HI_VOID *pArgs){
+    VDEC_THREAD_PARAM_S *pstVdecThreadParam =(VDEC_THREAD_PARAM_S *)pArgs;
+    HI_S32 s32Ret = 0;
+    //VDEC_CHN_ATTR_S  stAttr;
+    VIDEO_FRAME_INFO_S stVFrame;
+    HI_S32 VdecFd = 0;
+    fd_set read_fds;
+    struct timeval timeout;
+    HI_S32 max_fd = -1;
+    HI_S32 s32ChnId = pstVdecThreadParam->s32ChnId;
+    FILE *fp = NULL;
+    
+    prctl(PR_SET_NAME, "VdecGetFrame", 0,0,0);
+    #if 0
+    s32Ret = HI_MPI_VDEC_GetChnAttr(s32ChnId, &stAttr);
+    if(HI_SUCCESS != s32Ret)
+    {
+        SAMPLE_PRT("chn %d get chn attr fail for %#x!\n", s32ChnId, s32Ret);
+        return (HI_VOID *)(HI_FAILURE);
+    }
+    #endif
+    //if((VdecFd=HI_MPI_VDEC_GetFd(s32ChnId))<=0){
+     if((VdecFd=HI_MPI_VPSS_GetChnFd(0,1))<=0){
+        SAMPLE_PRT("chn %d get fd fail for %#x!\n", s32ChnId, s32Ret);
+        return (HI_VOID *)(HI_FAILURE);
+    }
+    max_fd = VdecFd;
+    fp = fopen("yuv.dat","wb+");
+    while(1)
+    {
+        if (pstVdecThreadParam->eThreadCtrl == THREAD_CTRL_STOP)
+        {
+            break;
+        }
+        FD_ZERO(&read_fds);
+        FD_SET(VdecFd, &read_fds);
+        // 设置超时时间（100毫秒）
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 100000;
+        s32Ret = select(max_fd + 1, &read_fds, NULL, NULL, &timeout);
+        if (s32Ret < 0) {
+            SAMPLE_PRT("Select error!");
+            break;
+        }
+        else if (s32Ret == 0) {
+            // 超时，继续等待
+            continue;
+        } 
+        else {
+                if(FD_ISSET(VdecFd, &read_fds)) {
+                    #if 0
+                    VDEC_CHN_STATUS_S pstStatus;
+                    if(HI_SUCCESS!=(s32Ret=HI_MPI_VDEC_QueryStatus(s32ChnId,&pstStatus))){
+                        SAMPLE_PRT("HI_MPI_VDEC_QueryStatus failed for %#x!\n",s32Ret);
+                        continue;
+                    }
+                    if(pstStatus.u32LeftPics<=0){
+                        SAMPLE_PRT("u32LeftPics is 0\n");
+                        continue;
+                    }
+                    #endif
+                    //if(HI_SUCCESS!=(s32Ret=HI_MPI_VDEC_GetFrame(s32ChnId, &stVFrame, pstVdecThreadParam->s32MilliSec))){
+                    if(HI_SUCCESS!=(s32Ret=HI_MPI_VPSS_GetChnFrame(0,1, &stVFrame, pstVdecThreadParam->s32MilliSec))){
+                        SAMPLE_PRT("HI_MPI_VPSS_GetChnFrame failed for %#x!\n",s32Ret);
+                        continue;
+                    }
+                    //
+                    #if 0
+                    static int cnter=0;
+                    SAMPLE_PRT("stVFrame:%d->u32PoolId=%u,enModId=%d\n",cnter++,stVFrame.u32PoolId,stVFrame.enModId);
+                    printf("u32Width=%u,u32Height=%u,enField=%d,enPixelmat=%d,enVideomat=%d,enCompressMode=%d,enDynamicRange=%d\n",stVFrame.stVFrame.u32Width,stVFrame.stVFrame.u32Height,stVFrame.stVFrame.enField,stVFrame.stVFrame.enPixelFormat,stVFrame.stVFrame.enVideoFormat,stVFrame.stVFrame.enCompressMode,stVFrame.stVFrame.enDynamicRange);
+                    printf("u32Stride:%u,%u,%u ",stVFrame.stVFrame.u32Stride[0],stVFrame.stVFrame.u32Stride[1],stVFrame.stVFrame.u32Stride[2]);
+                    printf("u64PhyAddr:%llu,%llu,%llu ",stVFrame.stVFrame.u64PhyAddr[0],stVFrame.stVFrame.u64PhyAddr[1],stVFrame.stVFrame.u64PhyAddr[2]);
+                    printf("u64VirAddr:%llu,%llu,%llu ",stVFrame.stVFrame.u64VirAddr[0],stVFrame.stVFrame.u64VirAddr[1],stVFrame.stVFrame.u64VirAddr[2]);
+                    #endif
+                    int tlen = stVFrame.stVFrame.u32Width * stVFrame.stVFrame.u32Height;
+                    stVFrame.stVFrame.u64VirAddr[0] = (HI_U64)(uintptr_t)(HI_MPI_SYS_Mmap(stVFrame.stVFrame.u64PhyAddr[0],tlen*3/2));
+                    stVFrame.stVFrame.u64VirAddr[1] = (HI_U64)(uintptr_t)HI_MPI_SYS_Mmap(stVFrame.stVFrame.u64PhyAddr[1],tlen/2);
+                    fwrite((void*)(uintptr_t)(stVFrame.stVFrame.u64VirAddr[0]),1,tlen,fp);
+                    fwrite((void*)(uintptr_t)(stVFrame.stVFrame.u64VirAddr[1]) ,1,tlen/2,fp);
+                    fflush(fp);
+                    HI_MPI_SYS_Munmap((void*)(uintptr_t)(stVFrame.stVFrame.u64VirAddr[0]) ,tlen*3/2);
+                    HI_MPI_SYS_Munmap((void*)(uintptr_t)(stVFrame.stVFrame.u64VirAddr[1]) ,tlen/2);
+                    //
+                    //if(HI_SUCCESS!=(s32Ret=HI_MPI_VDEC_ReleaseFrame(pstVdecThreadParam->s32ChnId, &stVFrame))){
+                    if(HI_SUCCESS!=(s32Ret=HI_MPI_VPSS_ReleaseChnFrame(0,1,&stVFrame))){
+                        SAMPLE_PRT("HI_MPI_VPSS_ReleaseChnFrame failed for %#x!\n",s32Ret);
+                        continue;
+                    }                 
+                }
+              
+        }
+    }
+    return (HI_VOID *)HI_SUCCESS;
+}
 
 HI_VOID * SAMPLE_COMM_VDEC_GetPic(HI_VOID *pArgs)
 {
